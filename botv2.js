@@ -537,7 +537,7 @@ bot.action(/^save_([^_]+)_(.+)$/, async (ctx) => {
   if (exists) return ctx.answerCbQuery('⚠️ Resi ini sudah tersimpan di riwayatmu!', { show_alert: true });
 
   savedResi[username].push({ courier, awb });
-  ctx.answerCbQuery('✅ Resi berhasil disimpan! Cek di menu /riwayat', { show_alert: true });
+  await ctx.answerCbQuery('✅ Resi berhasil disimpan!', { show_alert: true }).catch(() => {});
 });
 
 // Aksi Tombol Auto-Track
