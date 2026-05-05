@@ -64,7 +64,7 @@ bot.use(async (ctx, next) => {
       delete vipUsers[usernameLower];
       freeUsers.add(usernameLower);
       // Notif otomatis saat expired
-      bot.telegram.sendMessage(ctx.from.id, `⚠️ *INFO VIP*\n\nMasa aktif paket VIP 1 kamu (14 Hari) telah habis. Statusmu otomatis kembali menjadi *Free*. Ketik /premium untuk info perpanjangan.`, { parse_mode: 'Markdown' }).catch(() => {});
+      bot.telegram.sendMessage(ctx.from.id, `⚠️ *INFO VIP*\n\nMasa aktif paket VIP kamu telah habis. Statusmu otomatis kembali menjadi *Free*. Ketik /premium untuk info perpanjangan.`, { parse_mode: 'Markdown' }).catch(() => {});
     }
   }
 
@@ -164,24 +164,35 @@ bot.command('tambahlimit', (ctx) => {
   }
 });
 
-// Tambah User VIP 1 (65 Limit, 14 Hari)
+// Tambah User VIP (Dinamis: Limit & Hari)
 bot.command('addvip', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
   if (username !== ADMIN_USERNAME.toLowerCase()) return; 
 
   const parts = ctx.message.text.split(' ');
-  if (parts.length < 2) return ctx.reply('❗ Format salah!\n\nKetik: `/addvip username`', { parse_mode: 'Markdown' });
+  // Cek apakah format lengkap: /addvip username hari limit
+  if (parts.length < 4) {
+    return ctx.reply('❗ Format salah!\n\nKetik: `/addvip <username> <berapa_hari> <jumlah_limit>`\nContoh: `/addvip budi 1 50`', { parse_mode: 'Markdown' });
+  }
 
   const newUser = parts[1].replace('@', '').toLowerCase();
-  const expiryDate = Date.now() + (14 * 24 * 60 * 60 * 1000); // 14 Hari
+  const hari = parseInt(parts[2]);
+  const limit = parseInt(parts[3]);
+
+  if (isNaN(hari) || hari <= 0) return ctx.reply('❗ Jumlah hari harus berupa angka > 0.');
+  if (isNaN(limit) || limit <= 0) return ctx.reply('❗ Jumlah limit harus berupa angka > 0.');
+
+  // Date.now() akan mengambil jam sekarang. Kalau di tambah hari * 24 jam,
+  // maka otomatis matinya juga persis di jam yang sama.
+  const expiryDate = Date.now() + (hari * 24 * 60 * 60 * 1000); 
   
-  vipUsers[newUser] = { limit: 65, expiry: expiryDate };
+  vipUsers[newUser] = { limit: limit, expiry: expiryDate };
   freeUsers.delete(newUser); 
   
-  ctx.reply(`💎 *BERHASIL!*\n@${newUser} resmi *VIP 1* (Limit 65x, Aktif 14 Hari).`, { parse_mode: 'Markdown' });
+  ctx.reply(`💎 *BERHASIL!*\n@${newUser} resmi *VIP* (Limit ${limit}x, Aktif ${hari} Hari).`, { parse_mode: 'Markdown' });
 
   if (userChatIds[newUser]) {
-    bot.telegram.sendMessage(userChatIds[newUser], `💎 *AKSES VIP DIBERIKAN!* 💎\n\nSelamat! Akun kamu (@${newUser}) telah di-Upgrade ke *VIP 1*.\n\n📦 *Benefit:*\n- Limit Cek: 65x\n- Masa Aktif: 14 Hari\n- Bebas Limit Harian\n- Akses Fitur Auto-Track\n\nMenyala abangkuh! 🔥🚀`, { parse_mode: 'Markdown' }).catch(() => {});
+    bot.telegram.sendMessage(userChatIds[newUser], `💎 *AKSES VIP DIBERIKAN!* 💎\n\nSelamat! Akun kamu (@${newUser}) telah di-Upgrade ke *VIP*.\n\n📦 *Benefit:*\n- Limit Cek: ${limit}x\n- Masa Aktif: ${hari} Hari\n- Bebas Limit Harian\n- Akses Fitur Auto-Track\n\nMenyala abangkuh! 🔥🚀`, { parse_mode: 'Markdown' }).catch(() => {});
   }
 });
 
@@ -208,14 +219,15 @@ bot.command('list', (ctx) => {
 
   let msg = '🌟 *DAFTAR PENGGUNA BOT:*\n\n';
 
-  msg += `💎 *VIP 1 (Limit & Expired):*\n`;
+  msg += `💎 *VIP (Limit & Expired):*\n`;
   const vipKeys = Object.keys(vipUsers);
   if (vipKeys.length === 0) {
     msg += `_Belum ada member VIP_\n`;
   } else {
     let v = 1;
     vipKeys.forEach(user => { 
-      const expDate = new Date(vipUsers[user].expiry).toLocaleDateString('id-ID');
+      // Menggunakan toLocaleString agar jam/menit expired juga kelihatan
+      const expDate = new Date(vipUsers[user].expiry).toLocaleString('id-ID');
       msg += `${v}. @${user} (Sisa: ${vipUsers[user].limit}x | Exp: ${expDate})\n`; 
       v++; 
     });
@@ -252,13 +264,11 @@ bot.command(['premium', 'upgrade'], (ctx) => {
   ctx.reply(
 `👑 *INFORMASI UPGRADE PREMIUM* 👑
 
-*Paket VIP 1:*
-• Limit 65x Cek Resi
-• Masa Aktif 14 Hari
+*Paket VIP:*
+• Limit Cek Resi (Bisa Request)
+• Masa Aktif (Bisa Request)
 • Akses Fitur *Auto-Track* (Notif otomatis jika paket bergerak)
 • Bebas limit tunggu 24 jam
-
-*Harga: Rp 2.000*
 
 💳 Pembayaran via:
 - Dana / Gopay / Qris (Tanya Admin)
@@ -452,8 +462,9 @@ bot.start((ctx) => {
     limitText = `👑 Status: *ADMIN* (Unlimited)`;
   } else if (vipUsers[usernameLower]) {
     const sisa = vipUsers[usernameLower].limit;
-    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleDateString('id-ID');
-    limitText = `💎 Status: *VIP 1*\n🔋 Sisa Limit: *${sisa}x*\n⏳ Kedaluwarsa: *${exp}*`;
+    // Menggunakan toLocaleString agar user bisa lihat tanggal dan jam expired-nya
+    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleString('id-ID');
+    limitText = `💎 Status: *VIP*\n🔋 Sisa Limit: *${sisa}x*\n⏳ Kedaluwarsa: *${exp}*`;
   } else {
     const now = Date.now();
     const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -583,7 +594,7 @@ bot.on('text', async (ctx) => {
     if (vipUsers[usernameLower]) {
       // Logic VIP
       if (vipUsers[usernameLower].limit <= 0) {
-        return ctx.reply(`⛔ *LIMIT VIP HABIS*\n\nLimit paket VIP kamu (65x) telah habis. Ketik /premium untuk perpanjang.`, { parse_mode: 'Markdown' });
+        return ctx.reply(`⛔ *LIMIT VIP HABIS*\n\nLimit paket VIP kamu telah habis. Ketik /premium untuk perpanjang.`, { parse_mode: 'Markdown' });
       }
       vipUsers[usernameLower].limit -= 1; // Kurangi limit VIP
     } else {
