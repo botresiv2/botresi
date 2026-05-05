@@ -737,19 +737,30 @@ cron.schedule('0 */3 * * *', async () => {
 
 console.log('Menyiapkan bot dan web server...');
 
-// INI BAGIAN YANG DITAMBAH { dropPendingUpdates: true } UNTUK ANTI-ERROR 409
-bot.launch({ dropPendingUpdates: true }).then(() => {
-  console.log('bot ready di gunakan kakak,gass teruss');
-  
-  // FITUR BARU: AUTO-NOTIF KE ADMIN SAAT SELESAI DEPLOY
-  if (ADMIN_CHAT_ID && ADMIN_CHAT_ID !== '8505107135') {
-    bot.telegram.sendMessage(ADMIN_CHAT_ID, '✅ *bott ready nih min siap di gunakan hehe*', { parse_mode: 'Markdown' }).catch(() => {
-      console.log('Gagal kirim pesan ke Admin. Pastikan Chat ID benar dan Admin sudah nge-start bot.');
-    });
+// FITUR BARU: AUTO-RETRY KONEKSI (Anti 409 Conflict di Render)
+const startBot = async (retries = 5) => {
+  try {
+    await bot.launch({ dropPendingUpdates: true });
+    console.log('✅ bot ready di gunakan kakak, gass teruss');
+    
+    // Auto-Notif ke Admin saat selesai Deploy
+    if (ADMIN_CHAT_ID && ADMIN_CHAT_ID !== '8505107135') {
+      bot.telegram.sendMessage(ADMIN_CHAT_ID, '✅ *bott ready nih min siap di gunakan hehe*', { parse_mode: 'Markdown' }).catch(() => {
+        console.log('Gagal kirim pesan ke Admin. Pastikan Chat ID benar.');
+      });
+    }
+  } catch (err) {
+    // Kalau error 409, tunggu 5 detik lalu coba lagi
+    if (err.response && err.response.error_code === 409 && retries > 0) {
+      console.log(`⚠️ Terdeteksi sesi ganda (Render sedang transisi). Menunggu server lama mati... Coba lagi dalam 5 detik (Sisa percobaan: ${retries})`);
+      setTimeout(() => startBot(retries - 1), 5000);
+    } else {
+      console.error('❌ Gagal menjalankan bot secara fatal:', err);
+    }
   }
-}).catch((err) => {
-  console.error('Gagal menjalankan bot:', err);
-});
+};
+
+startBot(); // Panggil fungsi jalankan bot
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
