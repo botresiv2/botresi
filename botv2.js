@@ -28,7 +28,11 @@ const bot = new Telegraf(BOT_TOKEN);
 // ==========================================
 // 👑 SISTEM KEAMANAN, KASTA USER, & DATABASES (MEMORY)
 // ==========================================
-const ADMIN_USERNAME = 'padilstore'; // Username Admin Utama
+// ✅ SEKARANG SUPPORT BANYAK ADMIN (Gunakan huruf kecil semua tanpa @)
+const ADMIN_USERNAMES = ['padilstore', 'brownmatcha']; 
+const ADMIN_CHAT_ID = '8505107135';   // ISI DENGAN CHAT ID KAMU (ANGKA) AGAR BOT BISA NGASIH NOTIF SAAT DEPLOY
+
+const START_TIME = Date.now(); // Perekam waktu bot pertama kali nyala (Untuk fitur /time)
 
 const freeUsers = new Set(); // Kasta 1: Free
 const vipUsers = {};         // Kasta 2: VIP 1 (Objek untuk simpan limit & expired)
@@ -56,7 +60,7 @@ bot.use(async (ctx, next) => {
   }
 
   const usernameLower = username.toLowerCase();
-  const isAdmin = (usernameLower === ADMIN_USERNAME.toLowerCase());
+  const isAdmin = ADMIN_USERNAMES.includes(usernameLower);
 
   // Cek jika user adalah VIP, apakah masa aktifnya sudah habis?
   if (vipUsers[usernameLower]) {
@@ -96,13 +100,81 @@ function checkDailyLimit(username) {
 }
 
 // ------------------------------------------
-// FITUR ADMIN: BROADCAST, LIHAT RESI, MANAJEMEN USER
+// FITUR ADMIN: COMMAND, TIME, BROADCAST, DLL
 // ------------------------------------------
+
+// Fitur Cheat Sheet Command Admin
+bot.command('command', (ctx) => {
+  const username = ctx.from?.username?.toLowerCase() || '';
+  if (!ADMIN_USERNAMES.includes(username)) return;
+
+  const msg = `🛠️ *DAFTAR PERINTAH ADMIN* 🛠️
+_Simpan pesan ini agar tidak lupa!_
+
+1️⃣ */addvip <username> <hari> <limit>*
+👉 Tambah VIP dinamis.
+Contoh: \`/addvip dika 30 100\`
+
+2️⃣ */tambahlimit <jumlah> <username>*
+👉 Tambah limit untuk member Free.
+Contoh: \`/tambahlimit 10 budi\`
+
+3️⃣ */delvip <username>* atau */del <username>*
+👉 Hapus akses VIP/Limit ekstra dari user secara paksa (Kembali jadi Free).
+Contoh: \`/delvip joko\`
+
+4️⃣ */list*
+👉 Lihat daftar semua user (VIP & Free) beserta sisa limit & expired-nya.
+
+5️⃣ */lihatresi <username>*
+👉 Intip daftar resi yang disimpan user.
+Contoh: \`/lihatresi andi\`
+
+6️⃣ */bc <pesan>*
+👉 Kirim pesan broadcast ke semua user bot.
+Contoh: \`/bc Bot sedang maintenance jam 12 malam\`
+
+7️⃣ */time*
+👉 Cek statistik durasi bot menyala (Uptime server).`;
+
+  ctx.reply(msg, { parse_mode: 'Markdown' });
+});
+
+// Fitur Cek Uptime Bot
+bot.command('time', (ctx) => {
+  const username = ctx.from?.username?.toLowerCase() || '';
+  if (!ADMIN_USERNAMES.includes(username)) return;
+
+  const now = Date.now();
+  const diff = now - START_TIME;
+
+  const seconds = Math.floor((diff / 1000) % 60);
+  const minutes = Math.floor((diff / (1000 * 60)) % 60);
+  const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+
+  // Format Tanggal Mulai (Indonesian Locale)
+  const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+  const startDateStr = new Date(START_TIME).toLocaleString('id-ID', options).replace(/\./g, ':');
+
+  const msg = `⏱️ *INFO WAKTU AKTIF BOT (UPTIME)*
+━━━━━━━━━━━━━━━━━━━━━━
+
+🚀 *Mulai Beroperasi Sejak:*
+✅ Aktif sejak ${startDateStr} WIB
+
+⏳ *Durasi Menyala Non-Stop:*
+👉 ${days} Hari, ${hours} Jam, ${minutes} Menit, ${seconds} Detik
+
+_Catatan: Waktu ini akan keriset dari 0 lagi setiap kali bot di-restart atau di-deploy ulang di server._`;
+
+  ctx.reply(msg, { parse_mode: 'Markdown' });
+});
 
 // Broadcast Pesan Massal (Hanya Admin)
 bot.command('bc', async (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return;
+  if (!ADMIN_USERNAMES.includes(username)) return;
 
   const pesan = ctx.message.text.split(' ').slice(1).join(' ');
   if (!pesan) return ctx.reply('❗ Format salah!\n\nKetik: `/bc <pesan pengumuman>`', { parse_mode: 'Markdown' });
@@ -120,7 +192,7 @@ bot.command('bc', async (ctx) => {
 // Admin Lihat Resi User
 bot.command('lihatresi', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return;
+  if (!ADMIN_USERNAMES.includes(username)) return;
 
   const parts = ctx.message.text.split(' ');
   if (parts.length < 2) return ctx.reply('❗ Format salah!\n\nKetik: `/lihatresi username`\nContoh: `/lihatresi budi`', { parse_mode: 'Markdown' });
@@ -143,7 +215,7 @@ bot.command('lihatresi', (ctx) => {
 // Tambah Limit Manual ke User Free
 bot.command('tambahlimit', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return; 
+  if (!ADMIN_USERNAMES.includes(username)) return; 
 
   const parts = ctx.message.text.split(' ');
   if (parts.length < 3) return ctx.reply('❗ Format salah!\n\nKetik: `/tambahlimit <jumlah> <username>`\nContoh: `/tambahlimit 2 budi`', { parse_mode: 'Markdown' });
@@ -167,10 +239,9 @@ bot.command('tambahlimit', (ctx) => {
 // Tambah User VIP (Dinamis: Limit & Hari)
 bot.command('addvip', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return; 
+  if (!ADMIN_USERNAMES.includes(username)) return; 
 
   const parts = ctx.message.text.split(' ');
-  // Cek apakah format lengkap: /addvip username hari limit
   if (parts.length < 4) {
     return ctx.reply('❗ Format salah!\n\nKetik: `/addvip <username> <berapa_hari> <jumlah_limit>`\nContoh: `/addvip budi 1 50`', { parse_mode: 'Markdown' });
   }
@@ -182,8 +253,6 @@ bot.command('addvip', (ctx) => {
   if (isNaN(hari) || hari <= 0) return ctx.reply('❗ Jumlah hari harus berupa angka > 0.');
   if (isNaN(limit) || limit <= 0) return ctx.reply('❗ Jumlah limit harus berupa angka > 0.');
 
-  // Date.now() akan mengambil jam sekarang. Kalau di tambah hari * 24 jam,
-  // maka otomatis matinya juga persis di jam yang sama.
   const expiryDate = Date.now() + (hari * 24 * 60 * 60 * 1000); 
   
   vipUsers[newUser] = { limit: limit, expiry: expiryDate };
@@ -196,12 +265,13 @@ bot.command('addvip', (ctx) => {
   }
 });
 
-bot.command('del', (ctx) => {
+// Hapus/Cabut Akses VIP secara Paksa (Tiba-tiba)
+bot.command(['del', 'delvip'], (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return;
+  if (!ADMIN_USERNAMES.includes(username)) return;
 
   const parts = ctx.message.text.split(' ');
-  if (parts.length < 2) return ctx.reply('❗ Format salah!\n\nKetik: `/del username`', { parse_mode: 'Markdown' });
+  if (parts.length < 2) return ctx.reply('❗ Format salah!\n\nKetik: `/delvip username`', { parse_mode: 'Markdown' });
 
   const targetUser = parts[1].replace('@', '').toLowerCase();
   
@@ -210,12 +280,17 @@ bot.command('del', (ctx) => {
   delete usageHistory[targetUser];
   delete extraLimits[targetUser];
 
-  ctx.reply(`🗑️ Data akses @${targetUser} telah di-reset ke standar.`, { parse_mode: 'Markdown' });
+  ctx.reply(`🗑️ *BERHASIL CABUT VIP*\nAkses VIP untuk @${targetUser} telah dihapus. Statusnya kembali ke standar (Free).`, { parse_mode: 'Markdown' });
+
+  // Notif ke User kalau VIP nya dicabut
+  if (userChatIds[targetUser]) {
+    bot.telegram.sendMessage(userChatIds[targetUser], `⚠️ *PEMBERITAHUAN*\n\nMohon maaf, akses *VIP* kamu telah dinonaktifkan oleh Admin. Status akunmu saat ini kembali menjadi member *Free*.`, { parse_mode: 'Markdown' }).catch(() => {});
+  }
 });
 
 bot.command('list', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
-  if (username !== ADMIN_USERNAME.toLowerCase()) return;
+  if (!ADMIN_USERNAMES.includes(username)) return;
 
   let msg = '🌟 *DAFTAR PENGGUNA BOT:*\n\n';
 
@@ -226,8 +301,7 @@ bot.command('list', (ctx) => {
   } else {
     let v = 1;
     vipKeys.forEach(user => { 
-      // Menggunakan toLocaleString agar jam/menit expired juga kelihatan
-      const expDate = new Date(vipUsers[user].expiry).toLocaleString('id-ID');
+      const expDate = new Date(vipUsers[user].expiry).toLocaleString('id-ID').replace(/\./g, ':');
       msg += `${v}. @${user} (Sisa: ${vipUsers[user].limit}x | Exp: ${expDate})\n`; 
       v++; 
     });
@@ -311,7 +385,7 @@ function getProgressBar(status = '') {
   if (s.includes('delivered') || s.includes('sukses') || s.includes('berhasil')) return '▓▓▓▓▓▓▓▓▓▓ 100% (Selesai)';
   if (s.includes('courier') || s.includes('kurir') || s.includes('delivery')) return '▓▓▓▓▓▓▓▓░░ 85% (Otw Alamat)';
   if (s.includes('transit') || s.includes('hub') || s.includes('gateway')) return '▓▓▓▓▓▓░░░░ 60% (Transit)';
-  if (s.includes('process') || s.includes('sorting')) return '▓▓▓▓░░░░░░ 40% (Diproses)';
+  if (s.includes('process') || s.includes('sorting')) return '▓▓▓▓░░░░░░ 70% (Diproses)';
   if (s.includes('pickup') || s.includes('jemput') || s.includes('received')) return '▓▓░░░░░░░░ 20% (Dijemput)';
   if (s.includes('failed') || s.includes('gagal') || s.includes('return')) return '░░░░░░░░░░ 0% (Gagal/Retur)';
   return '▓▓▓░░░░░░░ 30% (Berjalan)';
@@ -454,7 +528,7 @@ async function processResiTracking(ctx, courier, waybill, number) {
 bot.start((ctx) => {
   const userName = cleanData(ctx.from.first_name || 'Kak');
   const usernameLower = ctx.from?.username?.toLowerCase() || '';
-  const isAdmin = (usernameLower === ADMIN_USERNAME.toLowerCase());
+  const isAdmin = ADMIN_USERNAMES.includes(usernameLower);
 
   let limitText = "";
   
@@ -462,8 +536,7 @@ bot.start((ctx) => {
     limitText = `👑 Status: *ADMIN* (Unlimited)`;
   } else if (vipUsers[usernameLower]) {
     const sisa = vipUsers[usernameLower].limit;
-    // Menggunakan toLocaleString agar user bisa lihat tanggal dan jam expired-nya
-    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleString('id-ID');
+    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleString('id-ID').replace(/\./g, ':');
     limitText = `💎 Status: *VIP*\n🔋 Sisa Limit: *${sisa}x*\n⏳ Kedaluwarsa: *${exp}*`;
   } else {
     const now = Date.now();
@@ -556,7 +629,7 @@ bot.action(/^auto_([^_]+)_(.+)$/, async (ctx) => {
   const courier = ctx.match[1];
   const awb = ctx.match[2];
   const username = ctx.from?.username?.toLowerCase();
-  const isAdmin = (username === ADMIN_USERNAME.toLowerCase());
+  const isAdmin = ADMIN_USERNAMES.includes(username);
 
   if (!vipUsers[username] && !isAdmin) {
     return ctx.answerCbQuery('⛔ Fitur Auto-Track eksklusif untuk member VIP! Ketik /premium', { show_alert: true });
@@ -587,7 +660,7 @@ bot.on('text', async (ctx) => {
   }
 
   const usernameLower = ctx.from?.username?.toLowerCase() || '';
-  const isAdmin = (usernameLower === ADMIN_USERNAME.toLowerCase());
+  const isAdmin = ADMIN_USERNAMES.includes(usernameLower);
   
   // PEMOTONG LIMIT (FREE VS VIP)
   if (!isAdmin) {
@@ -661,6 +734,13 @@ console.log('Menyiapkan bot dan web server...');
 // INI BAGIAN YANG DITAMBAH { dropPendingUpdates: true } UNTUK ANTI-ERROR 409
 bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log('bot ready di gunakan kakak,gass teruss');
+  
+  // FITUR BARU: AUTO-NOTIF KE ADMIN SAAT SELESAI DEPLOY
+  if (ADMIN_CHAT_ID && ADMIN_CHAT_ID !== '123456789') {
+    bot.telegram.sendMessage(ADMIN_CHAT_ID, '✅ *bott ready nih min siap di gunakan hehe*', { parse_mode: 'Markdown' }).catch(() => {
+      console.log('Gagal kirim pesan ke Admin. Pastikan Chat ID benar dan Admin sudah nge-start bot.');
+    });
+  }
 }).catch((err) => {
   console.error('Gagal menjalankan bot:', err);
 });
