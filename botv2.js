@@ -646,8 +646,12 @@ cron.schedule('0 */3 * * *', async () => {
 });
 
 console.log('Menyiapkan bot dan web server...');
-bot.launch().then(() => {
+
+// INI BAGIAN YANG DITAMBAH { dropPendingUpdates: true } UNTUK ANTI-ERROR 409
+bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log('bot ready di gunakan kakak,gass teruss');
+}).catch((err) => {
+  console.error('Gagal menjalankan bot:', err);
 });
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
