@@ -21,14 +21,13 @@ app.listen(port, '0.0.0.0', () => {
 // 🤖 SETUP BOT TELEGRAM
 // ==========================================
 const BOT_TOKEN = '8425326650:AAFu9jFivIDN38tDiiyrBZzfZYX3A6cDAO4';
-const API_KEY = '1b04e14a804700051b174ca1361c0808ca5a1fe5b811886401b95550e58423dc';
+const API_KEY = '6a2dba6c32c3d78b86a7366f4d592abe8fd287e7f14c5274dca01c2d6311d7ef';
 
 const bot = new Telegraf(BOT_TOKEN);
 
 // ==========================================
 // 👑 SISTEM KEAMANAN, KASTA USER, & DATABASES (MEMORY)
 // ==========================================
-// ✅ SEKARANG SUPPORT BANYAK ADMIN (Gunakan huruf kecil semua tanpa @)
 const ADMIN_USERNAMES = ['padilstore', 'brownmatcha']; 
 const ADMIN_CHAT_ID = '8505107135';   // ISI DENGAN CHAT ID KAMU (ANGKA) AGAR BOT BISA NGASIH NOTIF SAAT DEPLOY
 
@@ -140,7 +139,7 @@ Contoh: \`/bc Bot sedang maintenance jam 12 malam\`
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
 
-// Fitur Cek Uptime Bot
+// Fitur Cek Uptime Bot (WIB)
 bot.command('time', (ctx) => {
   const username = ctx.from?.username?.toLowerCase() || '';
   if (!ADMIN_USERNAMES.includes(username)) return;
@@ -153,8 +152,8 @@ bot.command('time', (ctx) => {
   const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
 
-  // Format Tanggal Mulai (Indonesian Locale)
-  const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+  // Format Tanggal Mulai dipaksa ke WIB (Asia/Jakarta)
+  const options = { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jakarta' };
   const startDateStr = new Date(START_TIME).toLocaleString('id-ID', options).replace(/\./g, ':');
 
   const msg = `⏱️ *INFO WAKTU AKTIF BOT (UPTIME)*
@@ -301,8 +300,9 @@ bot.command('list', (ctx) => {
   } else {
     let v = 1;
     vipKeys.forEach(user => { 
-      const expDate = new Date(vipUsers[user].expiry).toLocaleString('id-ID').replace(/\./g, ':');
-      msg += `${v}. @${user} (Sisa: ${vipUsers[user].limit}x | Exp: ${expDate})\n`; 
+      // Mengubah jam expired ke WIB
+      const expDate = new Date(vipUsers[user].expiry).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }).replace(/\./g, ':');
+      msg += `${v}. @${user} (Sisa: ${vipUsers[user].limit}x | Exp: ${expDate} WIB)\n`; 
       v++; 
     });
   }
@@ -372,8 +372,13 @@ bot.command(['riwayat', 'history'], (ctx) => {
 // ==========================================
 // FUNGSI UTAMA TRACKING (TIDAK ADA YANG DIHAPUS)
 // ==========================================
+
+// FITUR SAPAAN BERDASARKAN WIB BUKAN UTC SERVER
 function getGreeting() {
-  const hour = new Date().getHours();
+  const d = new Date();
+  const formatter = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Jakarta', hour: 'numeric', hour12: false });
+  const hour = parseInt(formatter.format(d));
+  
   if (hour < 11) return 'Selamat Pagi 🌅';
   if (hour < 15) return 'Selamat Siang ☀️';
   if (hour < 18) return 'Selamat Sore 🌇';
@@ -536,8 +541,9 @@ bot.start((ctx) => {
     limitText = `👑 Status: *ADMIN* (Unlimited)`;
   } else if (vipUsers[usernameLower]) {
     const sisa = vipUsers[usernameLower].limit;
-    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleString('id-ID').replace(/\./g, ':');
-    limitText = `💎 Status: *VIP*\n🔋 Sisa Limit: *${sisa}x*\n⏳ Kedaluwarsa: *${exp}*`;
+    // Mengubah jam expired ke WIB untuk info User
+    const exp = new Date(vipUsers[usernameLower].expiry).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }).replace(/\./g, ':');
+    limitText = `💎 Status: *VIP*\n🔋 Sisa Limit: *${sisa}x*\n⏳ Kedaluwarsa: *${exp} WIB*`;
   } else {
     const now = Date.now();
     const ONE_DAY = 24 * 60 * 60 * 1000;
@@ -736,7 +742,7 @@ bot.launch({ dropPendingUpdates: true }).then(() => {
   console.log('bot ready di gunakan kakak,gass teruss');
   
   // FITUR BARU: AUTO-NOTIF KE ADMIN SAAT SELESAI DEPLOY
-  if (ADMIN_CHAT_ID && ADMIN_CHAT_ID !== '123456789') {
+  if (ADMIN_CHAT_ID && ADMIN_CHAT_ID !== '8505107135') {
     bot.telegram.sendMessage(ADMIN_CHAT_ID, '✅ *bott ready nih min siap di gunakan hehe*', { parse_mode: 'Markdown' }).catch(() => {
       console.log('Gagal kirim pesan ke Admin. Pastikan Chat ID benar dan Admin sudah nge-start bot.');
     });
