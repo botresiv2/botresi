@@ -19,7 +19,7 @@ app.listen(port, '0.0.0.0', () => {
 // ==========================================
 // 🤖 SETUP BOT TELEGRAM
 // ==========================================
-const BOT_TOKEN = '8547583137:AAGosr3A9CQ_OOF_69KyWEH9tPvlM9k1UYk';
+const BOT_TOKEN = '8425326650:AAFu9jFivIDN38tDiiyrBZzfZYX3A6cDAO4';
 const API_KEY = '6a2dba6c32c3d78b86a7366f4d592abe8fd287e7f14c5274dca01c2d6311d7ef';
 const ADMIN_CHAT_ID = 8505107135; 
 
