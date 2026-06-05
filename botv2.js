@@ -31,16 +31,15 @@ const startTime = Date.now();
 // 🔥 Database sementara untuk nyimpen data pantauan resi VIP
 const activeTrackings = new Map();
 
-// 🔥 [BARU] Database sementara untuk nyimpen limit user biasa
-const userLimits = new Map();
-const DAILY_LIMIT = 5;
-const LIMIT_DURATION = 24 * 60 * 60 * 1000; // 24 Jam dalam milidetik
+// ==========================================
+// 🛡️ SISTEM AKSES PRIVATE, PREMIUM 24 JAM & LIMIT HARIAN
+// ==========================================
+const admins = ['brownmatcha', 'padilstore']; // Daftar admin (Akses Bebas Selamanya)
 
-// ==========================================
-// 🛡️ SISTEM AKSES PRIVATE (HANYA OWNER & YANG DI-ADD)
-// ==========================================
-const allowedUsers = ['brownmatcha', 'padilstore']; 
-const admins = ['brownmatcha', 'padilstore']; // Daftar admin yang bisa pakai command penuh
+// 🔥 Database sementara untuk nyimpen user premium (Waktu Expired & Sisa Limit)
+const premiumUsers = new Map();
+const PREMIUM_DURATION = 24 * 60 * 60 * 1000; // 24 Jam dalam milidetik
+const DAILY_LIMIT = 5; // Kuota limit untuk user
 
 bot.use(async (ctx, next) => {
   const username = ctx.from?.username;
@@ -51,52 +50,78 @@ bot.use(async (ctx, next) => {
     return next();
   }
 
-  // 2. FILTER AKSES: Kalau bukan user yang di-add, tolak total
-  if (!allowedUsers.includes(username)) {
-    if (ctx.message) {
-      return ctx.reply('🛑 *Eits, Akses Ditolak!*\n\nMaaf nih kak, kamu siapa ya mau cek resi? Kok tiba-tiba main pakai aja wkwk 🤭\nIni bot *Private*. Kalau mau ikutan pakai, wajib minta izin dulu ke owner: @padilstore', { parse_mode: 'Markdown' });
-    } else if (ctx.callbackQuery) {
-      return ctx.answerCbQuery('⛔ Eits, belum dapet izin ya? wkwk Hubungi owner dulu! 😜', { show_alert: true });
+  // 2. CEK AKSES ADMIN: Kalau admin, langsung lolos!
+  if (admins.includes(username)) {
+    // FITUR KHUSUS ADMIN (Nambah & Hapus User)
+    if (text.startsWith('/add ')) {
+      const newUser = text.split(' ')[1].replace('@', '');
+      
+      if (admins.includes(newUser)) {
+         return ctx.reply(`⚠️ Santai min, @${newUser} itu sesama admin. Udah kebal!`);
+      }
+
+      // Set masa aktif 24 jam & beri kuota limit
+      const expireTime = Date.now() + PREMIUM_DURATION;
+      premiumUsers.set(newUser, { expireTime: expireTime, count: DAILY_LIMIT });
+
+      const expDate = new Date(expireTime);
+      const opt = { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+      const expStr = new Intl.DateTimeFormat('id-ID', opt).format(expDate).replace(',', ' Jam').replace(':', '.');
+
+      return ctx.reply(`✅ *Asik!* @${newUser} udah dikasih akses *Premium 24 Jam* dengan limit *${DAILY_LIMIT} kali cek resi*.\n\n⏳ *Akses Otomatis Hangus Pada:*\n📆 ${expStr} WIB`, { parse_mode: 'Markdown' });
     }
-    return;
+
+    if (text.startsWith('/del ')) {
+      const targetUser = text.split(' ')[1].replace('@', '');
+      
+      if (admins.includes(targetUser)) {
+         return ctx.reply(`⚠️ Buset min, masa mau ngehapus admin sendiri? Ditolak! 🛑`);
+      }
+
+      if (premiumUsers.has(targetUser)) {
+        premiumUsers.delete(targetUser); 
+        return ctx.reply(`🗑️ Beres! Akses premium @${targetUser} udah dicabut duluan sebelum 24 jam. Bye-bye! 👋`);
+      } else {
+        return ctx.reply(`🤔 Lho, @${targetUser} emang nggak ada di dalam daftar premium, min.`);
+      }
+    }
+
+    return next(); // Kalau admin, lanjut ke command yang diketik
   }
 
-  // 3. FILTER COMMAND: Pastikan user VIP biasa GAK BISA pakai command apa-apa selain cek resi
-  if (text.startsWith('/') && text !== '/start') {
-    if (!admins.includes(username)) {
-      return ctx.reply('🛑 *Akses Ditolak!*\n\nMaaf kak, kamu cuma dikasih izin buat *Cek Resi* aja ya. Command ini khusus buat Admin! 📦', { parse_mode: 'Markdown' });
-    }
-  }
-
-  // 4. FITUR KHUSUS ADMIN (Nambah & Hapus User)
-  if (text.startsWith('/add ') && admins.includes(username)) {
-    const newUser = text.split(' ')[1].replace('@', '');
-    if (!allowedUsers.includes(newUser)) {
-      allowedUsers.push(newUser);
-      return ctx.reply(`✅ Asik! @${newUser} udah dikasih jalur khusus buat ngecek resi di bot ini. 🎉`);
-    } else {
-      return ctx.reply(`⚠️ Santai min, @${newUser} udah ada di dalam daftar kok. Aman!`);
-    }
-  }
-
-  if (text.startsWith('/del ') && admins.includes(username)) {
-    const targetUser = text.split(' ')[1].replace('@', '');
+  // 3. CEK AKSES USER PREMIUM
+  if (premiumUsers.has(username)) {
+    const userData = premiumUsers.get(username);
     
-    if (admins.includes(targetUser)) {
-       return ctx.reply(`⚠️ Buset min, masa mau ngehapus admin sendiri? Ditolak! 🛑`);
+    // Apakah udah lewat 24 Jam?
+    if (Date.now() > userData.expireTime) {
+      // Waktu habis, hapus dari database premium
+      premiumUsers.delete(username);
+      
+      if (ctx.message) {
+        return ctx.reply('🛑 *Waktu Premium Kamu Udah Habis!*\n\nMaaf kak, akses 24 jam kamu udah selesai nih. Kalau mau pakai bot lagi, wajib minta izin atau berlangganan lagi ke owner ya: @padilstore ⏳', { parse_mode: 'Markdown' });
+      } else if (ctx.callbackQuery) {
+        return ctx.answerCbQuery('⛔ Waktu premium kamu udah habis!', { show_alert: true });
+      }
+      return;
     }
 
-    const index = allowedUsers.indexOf(targetUser);
-    if (index > -1) {
-      allowedUsers.splice(index, 1); 
-      return ctx.reply(`🗑️ Beres! @${targetUser} udah ditendang dari daftar akses VIP. Bye-bye! 👋`);
-    } else {
-      return ctx.reply(`🤔 Lho, @${targetUser} emang nggak ada di dalam daftar, min.`);
+    // Kalau waktu masih ada, pastikan user biasa gak bisa pakai /cmd, /time, dll
+    if (text.startsWith('/') && text !== '/start') {
+      return ctx.reply('🛑 *Akses Ditolak!*\n\nMaaf kak, walau kamu premium, kamu cuma dikasih izin buat *Cek Resi* aja ya. Command garis miring (/) ini khusus Admin! 📦', { parse_mode: 'Markdown' });
     }
+
+    // Masih aktif, lanjut ke pengecekan (limit dipotong nanti pas ngecek resi)
+    return next();
   }
 
-  // Lolos pengecekan, lanjut
-  return next(); 
+  // 4. BUKAN ADMIN & BUKAN PREMIUM = TOLAK MENTAH-MENTAH
+  if (ctx.message) {
+    return ctx.reply('🛑 *Eits, Akses Ditolak!*\n\nMaaf nih kak, kamu siapa ya mau cek resi? Kok tiba-tiba main pakai aja wkwk 🤭\nIni bot *Private*. Kalau mau ikutan pakai, wajib minta izin dulu ke owner: @padilstore', { parse_mode: 'Markdown' });
+  } else if (ctx.callbackQuery) {
+    return ctx.answerCbQuery('⛔ Eits, belum dapet izin ya? wkwk Hubungi owner dulu! 😜', { show_alert: true });
+  }
+  
 });
 
 // ==========================================
@@ -204,12 +229,12 @@ bot.command('cmd', (ctx) => {
   msg += `• /stopvip \`<resi>\` - Batalin pantauan\n`;
   msg += `• /cmd - Lihat daftar perintah ini\n\n`;
   
-  msg += `👑 *MANAJEMEN USER:*\n`;
-  msg += `• /add \`<username>\` - Kasih izin ke user lain\n`;
-  msg += `• /del \`<username>\` - Hapus izin user\n\n`;
+  msg += `👑 *MANAJEMEN USER PREMIUM 24 JAM:*\n`;
+  msg += `• /add \`<username>\` - Kasih akses 24 jam ke user\n`;
+  msg += `• /del \`<username>\` - Cabut akses user sebelum habis\n\n`;
 
-  msg += `📦 *INFO USER BIASA:*\n`;
-  msg += `User yang di-add cuma bisa ngetik resi untuk di-track, nggak bisa pakai command pakai garis miring (/). Limit cek harian: 5 kali.`;
+  msg += `📦 *INFO PENGGUNA BOT:*\n`;
+  msg += `User yang di-add bisa ngecek resi maksimal ${DAILY_LIMIT} kali selama masa tenggang 24 Jam belum lewat.`;
   
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
@@ -342,7 +367,7 @@ bot.hears('👨‍💻 Tentang Bot', (ctx) => {
 // ==========================================
 bot.action(/^vip_(.+)_(.+)$/, async (ctx) => {
   try {
-    // 🔥 [BARU] Cek apakah user admin/owner. Kalau bukan, tolak!
+    // 🔥 Cek apakah user admin/owner. Kalau bukan, tolak!
     const username = ctx.from?.username;
     if (!admins.includes(username)) {
       return ctx.answerCbQuery('🛑 Maaf, fitur Auto-Update VIP ini khusus Admin / Owner ya abangkuh!', { show_alert: true });
@@ -389,40 +414,17 @@ bot.on('text', async (ctx) => {
     return ctx.reply('kamu ketik apasi gajelas banget typo kali lu ya 😒');
   }
 
-  // 🔥 [BARU] SISTEM LIMIT HARIAN KHUSUS USER BIASA (Admin Bebas)
-  if (!admins.includes(username)) {
-    const now = Date.now();
-    let limitData = userLimits.get(username);
-
-    if (limitData) {
-      const timePassed = now - limitData.firstUsedAt;
-      
-      if (timePassed >= LIMIT_DURATION) {
-        // Udah lewat 24 jam dari pemakaian pertama, reset kuota jadi 1 lagi!
-        limitData = { count: 1, firstUsedAt: now };
-        userLimits.set(username, limitData);
-      } else {
-        // Masih dalam hitungan 24 jam
-        if (limitData.count >= DAILY_LIMIT) {
-          const resetTime = limitData.firstUsedAt + LIMIT_DURATION;
-          const resetDate = new Date(resetTime);
-          const timeStr = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(resetDate).replace(':', '.');
-          
-          return ctx.reply(`🛑 *Waduh Limit Habis Kak!*\n\nKamu udah ngecek resi 5 kali hari ini. Limit kamu bakal balik lagi jam *${timeStr} WIB* besok ya. Sabar abangkuh! 🔥`, { parse_mode: 'Markdown' });
-        }
-        // Belum limit, tambah count
-        limitData.count += 1;
-        userLimits.set(username, limitData);
-      }
-    } else {
-      // User baru pertama kali pakai hari ini
-      userLimits.set(username, { count: 1, firstUsedAt: now });
-    }
-  }
-
   const parts = textMsg.split(/\s+/);
   if (parts.length < 2) {
     return ctx.reply('❗ *Ups, format ketikannya kurang pas kak.*\n\nContoh yang bener gini ya:\n`spx SPX123456789` atau `jnt JP123456789`', { parse_mode: 'Markdown' });
+  }
+
+  // 🔥 CEK SISA LIMIT KHUSUS USER BIASA SEBELUM LANJUT PROSES RESI
+  if (!admins.includes(username) && premiumUsers.has(username)) {
+    const userData = premiumUsers.get(username);
+    if (userData.count <= 0) {
+      return ctx.reply('🛑 *Limit Habis!*\n\nKamu sudah menggunakan semua kuota 5 kali cek resi. Silakan hubungi owner untuk perpanjang atau minta nambah kuota ya! 🔥', { parse_mode: 'Markdown' });
+    }
   }
 
   const courier = parts[0].toLowerCase();
@@ -432,6 +434,13 @@ bot.on('text', async (ctx) => {
   let loadingMsg;
 
   try {
+    // Kurangi kuota jika bukan admin & proses valid
+    if (!admins.includes(username) && premiumUsers.has(username)) {
+      const userData = premiumUsers.get(username);
+      userData.count -= 1;
+      premiumUsers.set(username, userData);
+    }
+
     loadingMsg = await ctx.reply('⏳ _Bentar ya kak, bot lagi lari ngecek resinya nih... 🏃💨_', { parse_mode: 'Markdown' });
 
     const params = { api_key: API_KEY, courier, awb: waybill };
@@ -512,13 +521,16 @@ bot.on('text', async (ctx) => {
     }
 
     if (loadingMsg) await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
-    
-    // Sisa kuota limit untuk user biasa ditambahkan di bawah
-    if (!admins.includes(username)) {
-      const currentCount = userLimits.get(username).count;
-      msg += `\n🎯 *Sisa Kuota Cek Harian:* ${DAILY_LIMIT - currentCount} kali lagi.`;
-    }
 
+    // Beri info sisa masa aktif & sisa limit buat user premium 
+    if (!admins.includes(username) && premiumUsers.has(username)) {
+      const userData = premiumUsers.get(username);
+      const timeLeftStr = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(new Date(userData.expireTime)).replace(':', '.');
+      
+      msg += `\n🎯 *Sisa Kuota Cek:* ${userData.count} kali lagi.`;
+      msg += `\n⏳ _Sisa akses premium kamu sampai jam ${timeLeftStr} WIB besok._`;
+    }
+    
     ctx.reply(msg, { 
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
@@ -533,6 +545,9 @@ bot.on('text', async (ctx) => {
     if (loadingMsg) {
       await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
     }
+    
+    // Kalau error karena resi nggak ketemu/gangguan API, jangan dikembalikan kuotanya (atau mau dikembalikan? 
+    // Di sini asumsinya kita hanguskan biar kuota kepakai sesuai pemakaian walau error).
     
     ctx.reply(
 `❌ *Ups, resi tidak ditemukan!*
