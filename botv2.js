@@ -17,13 +17,20 @@ app.listen(port, '0.0.0.0', () => {
 });
 
 // ==========================================
-// 🤖 SETUP BOT TELEGRAM
+// 🤖 SETUP BOT TELEGRAM & MULTI API KEY
 // ==========================================
 const BOT_TOKEN = '8425326650:AAFu9jFivIDN38tDiiyrBZzfZYX3A6cDAO4';
-const API_KEY = '6a2dba6c32c3d78b86a7366f4d592abe8fd287e7f14c5274dca01c2d6311d7ef';
 const ADMIN_CHAT_ID = 8505107135; 
 
 const bot = new Telegraf(BOT_TOKEN);
+
+// 🔥 [BARU] SISTEM MULTI API KEY (AUTO FALLBACK)
+const API_KEYS = [
+  '6a2dba6c32c3d78b86a7366f4d592abe8fd287e7f14c5274dca01c2d6311d7ef', // API Key 1 (Yang lagi dipakai)
+  '98c470e253df048535e42833659e0a785e8f5dfc95acc34271dd39cd2bfedf4a' // 👈 TARUH API KEY AKUN KEDUA KAMU DI SINI
+  // Kalau mau nambah 3 atau 4 API Key tinggal tambahin koma di atas dan masukin aja ke bawahnya
+];
+let currentApiIndex = 0; // Mulai dari index 0 (API Key 1)
 
 // 🔥 Waktu pertama kali script dijalankan (UNTUK FITUR /time)
 const startTime = Date.now();
@@ -189,6 +196,38 @@ function getCourierName(code) {
     'jet': 'JET Express'
   };
   return couriers[code.toLowerCase()] || code.toUpperCase();
+}
+
+// 🔥 [BARU] FUNGSI REQUEST API PINTAR (AUTO GANTI KEY KALAU LIMIT)
+async function fetchTrackingData(courier, awb, number = null) {
+  let attempts = 0;
+  
+  while (attempts < API_KEYS.length) {
+    try {
+      const params = { api_key: API_KEYS[currentApiIndex], courier, awb };
+      if (number) params.number = number;
+      
+      const res = await axios.get('https://api.binderbyte.com/v1/track', { params });
+      return res; // Kalau sukses, langsung balikin datanya
+    } catch (error) {
+      const errMessage = error.response?.data?.message?.toLowerCase() || '';
+      const status = error.response?.status;
+      
+      // Deteksi kalau limit habis atau API key error
+      if (status === 403 || status === 429 || errMessage.includes('limit') || errMessage.includes('exceeded') || errMessage.includes('invalid')) {
+        console.log(`⚠️ API Key ke-${currentApiIndex + 1} Limit/Bermasalah! Auto pindah ke API Key berikutnya...`);
+        // Ganti ke index berikutnya (kalau udah mentok, balik ke index 0)
+        currentApiIndex = (currentApiIndex + 1) % API_KEYS.length;
+        attempts++;
+      } else {
+        // Kalau error karena resi salah atau web error, langsung lempar aja (gak usah ganti API)
+        throw error;
+      }
+    }
+  }
+  
+  // Kalau semua API Key di dalam list udah dicoba tapi limit semua:
+  throw new Error("ALL_KEYS_LIMIT");
 }
 
 // ==========================================
@@ -443,10 +482,8 @@ bot.on('text', async (ctx) => {
 
     loadingMsg = await ctx.reply('⏳ _Bentar ya kak, bot lagi lari ngecek resinya nih... 🏃💨_', { parse_mode: 'Markdown' });
 
-    const params = { api_key: API_KEY, courier, awb: waybill };
-    if (number) params.number = number;
-
-    const res = await axios.get('https://api.binderbyte.com/v1/track', { params });
+    // 🔥 [BARU] Panggil fungsi pintar Auto-Fallback API
+    const res = await fetchTrackingData(courier, waybill, number);
 
     if (!res.data || !res.data.data) {
       if (loadingMsg) await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
@@ -540,14 +577,16 @@ bot.on('text', async (ctx) => {
     });
 
   } catch (err) {
-    console.error('Error tracking:', err.response?.data || err.message);
-    
     if (loadingMsg) {
       await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
     }
+
+    // 🔥 [BARU] Kalau error karena semua API udah limit beneran
+    if (err.message === "ALL_KEYS_LIMIT") {
+      return ctx.reply('🛑 *Gawat Kak!*\n\nSemua API Key kita bulan ini udah mentok limitnya (500 resi/bulan). Mesti nunggu bulan depan atau Owner harus nambahin API Key baru nih 😭', { parse_mode: 'Markdown' });
+    }
     
-    // Kalau error karena resi nggak ketemu/gangguan API, jangan dikembalikan kuotanya (atau mau dikembalikan? 
-    // Di sini asumsinya kita hanguskan biar kuota kepakai sesuai pemakaian walau error).
+    console.error('Error tracking:', err.response?.data || err.message);
     
     ctx.reply(
 `❌ *Ups, resi tidak ditemukan!*
@@ -594,8 +633,8 @@ setInterval(async () => {
 
   for (const [awb, data] of activeTrackings.entries()) {
     try {
-      const params = { api_key: API_KEY, courier: data.courier, awb: awb };
-      const res = await axios.get('https://api.binderbyte.com/v1/track', { params });
+      // 🔥 [BARU] Pakai fungsi pintar buat auto-fallback saat ngecek background
+      const res = await fetchTrackingData(data.courier, awb);
       
       if (res.data && res.data.data) {
         const history = res.data.data.history || [];
@@ -626,7 +665,11 @@ setInterval(async () => {
         }
       }
     } catch (err) {
-      console.log(`⚠️ Gagal ngecek otomatis resi ${awb}:`, err.message);
+      if (err.message === "ALL_KEYS_LIMIT") {
+        console.log(`⚠️ Henti Pengecekan Auto: Semua API Limit Habis!`);
+      } else {
+        console.log(`⚠️ Gagal ngecek otomatis resi ${awb}:`, err.message);
+      }
     }
   }
 }, 60 * 60 * 1000); // 👈 Ini diset jadi 1 Jam (60 menit)
