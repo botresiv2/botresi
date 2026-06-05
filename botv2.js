@@ -31,6 +31,11 @@ const startTime = Date.now();
 // 🔥 Database sementara untuk nyimpen data pantauan resi VIP
 const activeTrackings = new Map();
 
+// 🔥 [BARU] Database sementara untuk nyimpen limit user biasa
+const userLimits = new Map();
+const DAILY_LIMIT = 5;
+const LIMIT_DURATION = 24 * 60 * 60 * 1000; // 24 Jam dalam milidetik
+
 // ==========================================
 // 🛡️ SISTEM AKSES PRIVATE (HANYA OWNER & YANG DI-ADD)
 // ==========================================
@@ -204,7 +209,7 @@ bot.command('cmd', (ctx) => {
   msg += `• /del \`<username>\` - Hapus izin user\n\n`;
 
   msg += `📦 *INFO USER BIASA:*\n`;
-  msg += `User yang di-add cuma bisa ngetik resi untuk di-track, nggak bisa pakai command pakai garis miring (/).`;
+  msg += `User yang di-add cuma bisa ngetik resi untuk di-track, nggak bisa pakai command pakai garis miring (/). Limit cek harian: 5 kali.`;
   
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
@@ -323,7 +328,7 @@ bot.hears('📖 Cara Pakai', (ctx) => {
 Contoh: \`jnt JP1234567890\`
 (Khusus JNE, tambah 5 digit nomor HP penerima di akhir jika data kurang lengkap. Contoh: \`jne 123456789 12345\`)
 
-2. *Auto-Update VIP:* Bot akan ngabarin otomatis tiap 1 jam kalau ada pergerakan paket. Klik tombol di bawah pesan resi untuk mengaktifkan.`, 
+2. *Auto-Update VIP (Hanya Admin):* Bot akan ngabarin otomatis tiap 1 jam kalau ada pergerakan paket. Klik tombol di bawah pesan resi untuk mengaktifkan.`, 
     { parse_mode: 'Markdown' }
   );
 });
@@ -337,6 +342,12 @@ bot.hears('👨‍💻 Tentang Bot', (ctx) => {
 // ==========================================
 bot.action(/^vip_(.+)_(.+)$/, async (ctx) => {
   try {
+    // 🔥 [BARU] Cek apakah user admin/owner. Kalau bukan, tolak!
+    const username = ctx.from?.username;
+    if (!admins.includes(username)) {
+      return ctx.answerCbQuery('🛑 Maaf, fitur Auto-Update VIP ini khusus Admin / Owner ya abangkuh!', { show_alert: true });
+    }
+
     const courier = ctx.match[1];
     const awb = ctx.match[2];
     const chatId = ctx.chat.id;
@@ -371,11 +382,42 @@ _(Mengecek otomatis setiap 1 Jam, dan libur ngecek di jam 00:00 - 06:00)_`,
 // ==========================================
 bot.on('text', async (ctx) => {
   const textMsg = ctx.message.text.trim();
+  const username = ctx.from?.username;
   
   // Kalau dia (Admin) ngetik garis miring tapi commandnya nggak ada di list atas (berarti typo/ngawur)
-  // Catatan: User biasa nggak bakal tembus ke baris ini kalau ngetik / karena udah diblokir di atas
   if (textMsg.startsWith('/')) {
     return ctx.reply('kamu ketik apasi gajelas banget typo kali lu ya 😒');
+  }
+
+  // 🔥 [BARU] SISTEM LIMIT HARIAN KHUSUS USER BIASA (Admin Bebas)
+  if (!admins.includes(username)) {
+    const now = Date.now();
+    let limitData = userLimits.get(username);
+
+    if (limitData) {
+      const timePassed = now - limitData.firstUsedAt;
+      
+      if (timePassed >= LIMIT_DURATION) {
+        // Udah lewat 24 jam dari pemakaian pertama, reset kuota jadi 1 lagi!
+        limitData = { count: 1, firstUsedAt: now };
+        userLimits.set(username, limitData);
+      } else {
+        // Masih dalam hitungan 24 jam
+        if (limitData.count >= DAILY_LIMIT) {
+          const resetTime = limitData.firstUsedAt + LIMIT_DURATION;
+          const resetDate = new Date(resetTime);
+          const timeStr = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(resetDate).replace(':', '.');
+          
+          return ctx.reply(`🛑 *Waduh Limit Habis Kak!*\n\nKamu udah ngecek resi 5 kali hari ini. Limit kamu bakal balik lagi jam *${timeStr} WIB* besok ya. Sabar abangkuh! 🔥`, { parse_mode: 'Markdown' });
+        }
+        // Belum limit, tambah count
+        limitData.count += 1;
+        userLimits.set(username, limitData);
+      }
+    } else {
+      // User baru pertama kali pakai hari ini
+      userLimits.set(username, { count: 1, firstUsedAt: now });
+    }
   }
 
   const parts = textMsg.split(/\s+/);
@@ -471,6 +513,12 @@ bot.on('text', async (ctx) => {
 
     if (loadingMsg) await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
     
+    // Sisa kuota limit untuk user biasa ditambahkan di bawah
+    if (!admins.includes(username)) {
+      const currentCount = userLimits.get(username).count;
+      msg += `\n🎯 *Sisa Kuota Cek Harian:* ${DAILY_LIMIT - currentCount} kali lagi.`;
+    }
+
     ctx.reply(msg, { 
       parse_mode: 'Markdown',
       ...Markup.inlineKeyboard([
