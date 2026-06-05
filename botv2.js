@@ -70,12 +70,13 @@ bot.use(async (ctx, next) => {
     // FITUR KHUSUS ADMIN (Nambah & Hapus User)
     if (text.startsWith('/add ')) {
       const newUser = text.split(' ')[1].replace('@', '');
+      const safeNewUser = newUser.replace(/_/g, '\\_'); // 🔥 Mencegah error Markdown karena ada underscore di username
       
       if (admins.includes(newUser)) {
-         return ctx.reply(`⚠️ Santai min, @${newUser} itu sesama admin. Udah kebal!`);
+         return ctx.reply(`⚠️ Santai min, @${safeNewUser} itu sesama admin. Udah kebal!`, { parse_mode: 'Markdown' });
       }
 
-      // 🔥 [BARU] Set notified jadi false, biar nanti pas dia chat bot, keluar pop-up surprise
+      // Set notified jadi false, biar nanti pas dia chat bot, keluar pop-up surprise
       const expireTime = Date.now() + PREMIUM_DURATION;
       premiumUsers.set(newUser, { expireTime: expireTime, count: DAILY_LIMIT, notified: false });
 
@@ -83,11 +84,12 @@ bot.use(async (ctx, next) => {
       const opt = { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
       const expStr = new Intl.DateTimeFormat('id-ID', opt).format(expDate).replace(',', ' Jam').replace(':', '.');
 
-      return ctx.reply(`✅ *Asik!* @${newUser} udah dikasih akses *Premium 24 Jam* dengan limit *${DAILY_LIMIT} kali cek resi*.\n\n⏳ *Akses Otomatis Hangus Pada:*\n📆 ${expStr} WIB`, { parse_mode: 'Markdown' });
+      return ctx.reply(`✅ *Asik!* @${safeNewUser} udah dikasih akses *Premium 24 Jam* dengan limit *${DAILY_LIMIT} kali cek resi*.\n\n⏳ *Akses Otomatis Hangus Pada:*\n📆 ${expStr} WIB`, { parse_mode: 'Markdown' });
     }
 
     if (text.startsWith('/del ')) {
       const targetUser = text.split(' ')[1].replace('@', '');
+      const safeTargetUser = targetUser.replace(/_/g, '\\_'); // 🔥 Mengamankan underscore
       
       if (admins.includes(targetUser)) {
          return ctx.reply(`⚠️ Buset min, masa mau ngehapus admin sendiri? Ditolak! 🛑`);
@@ -95,9 +97,9 @@ bot.use(async (ctx, next) => {
 
       if (premiumUsers.has(targetUser)) {
         premiumUsers.delete(targetUser); 
-        return ctx.reply(`🗑️ Beres! Akses premium @${targetUser} udah dicabut duluan sebelum 24 jam. Bye-bye! 👋`);
+        return ctx.reply(`🗑️ Beres! Akses premium @${safeTargetUser} udah dicabut duluan sebelum 24 jam. Bye-bye! 👋`, { parse_mode: 'Markdown' });
       } else {
-        return ctx.reply(`🤔 Lho, @${targetUser} emang nggak ada di dalam daftar premium, min.`);
+        return ctx.reply(`🤔 Lho, @${safeTargetUser} emang nggak ada di dalam daftar premium, min.`, { parse_mode: 'Markdown' });
       }
     }
 
@@ -290,7 +292,8 @@ bot.command('cmd', (ctx) => {
   
   msg += `👑 *MANAJEMEN USER PREMIUM 24 JAM:*\n`;
   msg += `• /add \`<username>\` - Kasih akses 24 jam ke user\n`;
-  msg += `• /del \`<username>\` - Cabut akses user sebelum habis\n\n`;
+  msg += `• /del \`<username>\` - Cabut akses user sebelum habis\n`;
+  msg += `• /listadd - Lihat daftar user premium aktif\n\n`; // 🔥 Ditambahkan ke menu cmd
 
   msg += `📦 *INFO PENGGUNA BOT:*\n`;
   msg += `User yang di-add bisa ngecek resi maksimal ${DAILY_LIMIT} kali selama masa tenggang 24 Jam belum lewat.`;
@@ -321,6 +324,44 @@ bot.command('time', (ctx) => {
   msg += `👉 ${days} Hari, ${hours} Jam, ${minutes} Menit, ${seconds} Detik\n\n`;
   msg += `_Catatan: Waktu ini akan keriset dari 0 lagi setiap kali bot di-restart atau di-deploy ulang di server._`;
   
+  ctx.reply(msg, { parse_mode: 'Markdown' });
+});
+
+// ==========================================
+// 👑 FITUR CEK DAFTAR USER PREMIUM AKTIF (/listadd)
+// ==========================================
+bot.command('listadd', (ctx) => {
+  if (premiumUsers.size === 0) {
+    return ctx.reply('📭 Belum ada user premium yang terdaftar saat ini.');
+  }
+
+  let msg = `📋 *DAFTAR USER PREMIUM AKTIF*\n\n`;
+  let count = 1;
+  const now = Date.now();
+
+  for (const [user, data] of premiumUsers.entries()) {
+    // Kalau ada user yang nyatanya udah expired pas admin ngetik ini, hapus & skip
+    if (now > data.expireTime) {
+      premiumUsers.delete(user);
+      continue;
+    }
+
+    const expDate = new Date(data.expireTime);
+    const opt = { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
+    const expStr = new Intl.DateTimeFormat('id-ID', opt).format(expDate).replace(',', ' Jam').replace(':', '.');
+    const safeUser = user.replace(/_/g, '\\_'); // Aman dari underscore crash
+
+    msg += `*${count}.* @${safeUser}\n`;
+    msg += ` ├ 🎟️ Sisa Limit: ${data.count} kali cek\n`;
+    msg += ` └ ⏳ Expired: ${expStr} WIB\n\n`;
+    count++;
+  }
+
+  // Kalau ternyata di dalem listnya expired semua setelah dicek
+  if (count === 1) {
+    return ctx.reply('📭 Semua user premium sebelumnya sudah hangus / expired.', { parse_mode: 'Markdown' });
+  }
+
   ctx.reply(msg, { parse_mode: 'Markdown' });
 });
 
