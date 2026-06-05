@@ -24,11 +24,10 @@ const ADMIN_CHAT_ID = 8505107135;
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// 🔥 [BARU] SISTEM MULTI API KEY (AUTO FALLBACK)
+// 🔥 SISTEM MULTI API KEY (AUTO FALLBACK)
 const API_KEYS = [
   '6a2dba6c32c3d78b86a7366f4d592abe8fd287e7f14c5274dca01c2d6311d7ef', // API Key 1 (Yang lagi dipakai)
   '98c470e253df048535e42833659e0a785e8f5dfc95acc34271dd39cd2bfedf4a' // 👈 TARUH API KEY AKUN KEDUA KAMU DI SINI
-  // Kalau mau nambah 3 atau 4 API Key tinggal tambahin koma di atas dan masukin aja ke bawahnya
 ];
 let currentApiIndex = 0; // Mulai dari index 0 (API Key 1)
 
@@ -52,8 +51,8 @@ bot.use(async (ctx, next) => {
   const username = ctx.from?.username;
   const text = ctx.message?.text || '';
   
-  // 1. IZINKAN SEMUA ORANG AKSES /START (Biar disapa dulu sama botnya)
-  if (text.startsWith('/start')) {
+  // 1. IZINKAN SEMUA ORANG AKSES /START DAN /READY (Biar disapa dulu sama botnya)
+  if (text.startsWith('/start') || text.startsWith('/ready')) {
     return next();
   }
 
@@ -114,7 +113,7 @@ bot.use(async (ctx, next) => {
     }
 
     // Kalau waktu masih ada, pastikan user biasa gak bisa pakai /cmd, /time, dll
-    if (text.startsWith('/') && text !== '/start') {
+    if (text.startsWith('/') && text !== '/start' && text !== '/ready') {
       return ctx.reply('🛑 *Akses Ditolak!*\n\nMaaf kak, walau kamu premium, kamu cuma dikasih izin buat *Cek Resi* aja ya. Command garis miring (/) ini khusus Admin! 📦', { parse_mode: 'Markdown' });
     }
 
@@ -198,7 +197,7 @@ function getCourierName(code) {
   return couriers[code.toLowerCase()] || code.toUpperCase();
 }
 
-// 🔥 [BARU] FUNGSI REQUEST API PINTAR (AUTO GANTI KEY KALAU LIMIT)
+// 🔥 FUNGSI REQUEST API PINTAR (AUTO GANTI KEY KALAU LIMIT)
 async function fetchTrackingData(courier, awb, number = null) {
   let attempts = 0;
   
@@ -257,6 +256,11 @@ Silakan pilih menu di bawah ini jika butuh bantuan:`,
       ]).resize() 
     }
   );
+});
+
+// 🔥 [BARU] FITUR COMMAND /READY UNTUK SEMUA USER
+bot.command('ready', (ctx) => {
+  ctx.reply('Yooowww bot udah 100% *ready* nih kak! 🔥🚀\nAman jaya sentosa, no lelet no ribet. Langsung gas aja ketik resinya, menyala abangkuh! 💯✨', { parse_mode: 'Markdown' });
 });
 
 bot.command('cmd', (ctx) => {
@@ -482,7 +486,7 @@ bot.on('text', async (ctx) => {
 
     loadingMsg = await ctx.reply('⏳ _Bentar ya kak, bot lagi lari ngecek resinya nih... 🏃💨_', { parse_mode: 'Markdown' });
 
-    // 🔥 [BARU] Panggil fungsi pintar Auto-Fallback API
+    // 🔥 Panggil fungsi pintar Auto-Fallback API
     const res = await fetchTrackingData(courier, waybill, number);
 
     if (!res.data || !res.data.data) {
@@ -581,7 +585,7 @@ bot.on('text', async (ctx) => {
       await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
     }
 
-    // 🔥 [BARU] Kalau error karena semua API udah limit beneran
+    // 🔥 Kalau error karena semua API udah limit beneran
     if (err.message === "ALL_KEYS_LIMIT") {
       return ctx.reply('🛑 *Gawat Kak!*\n\nSemua API Key kita bulan ini udah mentok limitnya (500 resi/bulan). Mesti nunggu bulan depan atau Owner harus nambahin API Key baru nih 😭', { parse_mode: 'Markdown' });
     }
@@ -633,7 +637,7 @@ setInterval(async () => {
 
   for (const [awb, data] of activeTrackings.entries()) {
     try {
-      // 🔥 [BARU] Pakai fungsi pintar buat auto-fallback saat ngecek background
+      // 🔥 Pakai fungsi pintar buat auto-fallback saat ngecek background
       const res = await fetchTrackingData(data.courier, awb);
       
       if (res.data && res.data.data) {
