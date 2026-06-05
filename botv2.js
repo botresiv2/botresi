@@ -42,7 +42,7 @@ const activeTrackings = new Map();
 // ==========================================
 const admins = ['brownmatcha', 'padilstore']; // Daftar admin (Akses Bebas Selamanya)
 
-// 🔥 Database sementara untuk nyimpen user premium (Waktu Expired & Sisa Limit)
+// 🔥 Database sementara untuk nyimpen user premium (Waktu Expired, Sisa Limit, Status Notif)
 const premiumUsers = new Map();
 const PREMIUM_DURATION = 24 * 60 * 60 * 1000; // 24 Jam dalam milidetik
 const DAILY_LIMIT = 5; // Kuota limit untuk user
@@ -53,6 +53,15 @@ bot.use(async (ctx, next) => {
   
   // 1. IZINKAN SEMUA ORANG AKSES /START DAN /READY (Biar disapa dulu sama botnya)
   if (text.startsWith('/start') || text.startsWith('/ready')) {
+    // 🔥 [BARU] Trik Surprise Notif buat user yang baru di-add pas dia ngetik start/ready
+    if (premiumUsers.has(username)) {
+      const userData = premiumUsers.get(username);
+      if (Date.now() < userData.expireTime && !userData.notified) {
+        userData.notified = true; // Tandain kalau udah dikasih tau
+        premiumUsers.set(username, userData);
+        await ctx.reply('🎉 *YEYYY ASIIIIKK!* 🎉\n\nKamu baru aja dapet izin khusus nih dari Owner buat pakai bot ini! Menyala abangkuhhh 🔥\n\nSekarang tinggal ketik aja resinya, nggak usah sungkan-sungkan. Let\'s gooo! 🚀📦', { parse_mode: 'Markdown' });
+      }
+    }
     return next();
   }
 
@@ -66,9 +75,9 @@ bot.use(async (ctx, next) => {
          return ctx.reply(`⚠️ Santai min, @${newUser} itu sesama admin. Udah kebal!`);
       }
 
-      // Set masa aktif 24 jam & beri kuota limit
+      // 🔥 [BARU] Set notified jadi false, biar nanti pas dia chat bot, keluar pop-up surprise
       const expireTime = Date.now() + PREMIUM_DURATION;
-      premiumUsers.set(newUser, { expireTime: expireTime, count: DAILY_LIMIT });
+      premiumUsers.set(newUser, { expireTime: expireTime, count: DAILY_LIMIT, notified: false });
 
       const expDate = new Date(expireTime);
       const opt = { timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' };
@@ -115,6 +124,13 @@ bot.use(async (ctx, next) => {
     // Kalau waktu masih ada, pastikan user biasa gak bisa pakai /cmd, /time, dll
     if (text.startsWith('/') && text !== '/start' && text !== '/ready') {
       return ctx.reply('🛑 *Akses Ditolak!*\n\nMaaf kak, walau kamu premium, kamu cuma dikasih izin buat *Cek Resi* aja ya. Command garis miring (/) ini khusus Admin! 📦', { parse_mode: 'Markdown' });
+    }
+
+    // 🔥 [BARU] Trik Surprise Notif kalau dia tiba-tiba langsung ngetik resi tanpa /start
+    if (!userData.notified) {
+      userData.notified = true; // Tandain kalau udah dikasih tau
+      premiumUsers.set(username, userData);
+      await ctx.reply('🎉 *YEYYY ASIIIIKK!* 🎉\n\nKamu baru aja dapet izin khusus nih dari Owner buat pakai bot ini! Menyala abangkuhhh 🔥\n\nSekarang tinggal ketik aja resinya, nggak usah sungkan-sungkan. Let\'s gooo! 🚀📦', { parse_mode: 'Markdown' });
     }
 
     // Masih aktif, lanjut ke pengecekan (limit dipotong nanti pas ngecek resi)
@@ -258,7 +274,7 @@ Silakan pilih menu di bawah ini jika butuh bantuan:`,
   );
 });
 
-// 🔥 [BARU] FITUR COMMAND /READY UNTUK SEMUA USER
+// 🔥 FITUR COMMAND /READY UNTUK SEMUA USER
 bot.command('ready', (ctx) => {
   ctx.reply('Yooowww bot udah 100% *ready* nih kak! 🔥🚀\nAman jaya sentosa, no lelet no ribet. Langsung gas aja ketik resinya, menyala abangkuh! 💯✨', { parse_mode: 'Markdown' });
 });
@@ -563,13 +579,10 @@ bot.on('text', async (ctx) => {
 
     if (loadingMsg) await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
 
-    // Beri info sisa masa aktif & sisa limit buat user premium 
+    // Beri info sisa limit buat user premium (Expired nggak usah diliatin di bawah resi lagi sesuai *request*)
     if (!admins.includes(username) && premiumUsers.has(username)) {
       const userData = premiumUsers.get(username);
-      const timeLeftStr = new Intl.DateTimeFormat('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit' }).format(new Date(userData.expireTime)).replace(':', '.');
-      
       msg += `\n🎯 *Sisa Kuota Cek:* ${userData.count} kali lagi.`;
-      msg += `\n⏳ _Sisa akses premium kamu sampai jam ${timeLeftStr} WIB besok._`;
     }
     
     ctx.reply(msg, { 
